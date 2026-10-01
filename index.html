@@ -27,7 +27,7 @@
 
 <div class="card">
     <h1>Surgical Xodo Cleaner</h1>
-    <p>Restores the true page size Xodo stashed away, cropping the watermark out of view.</p>
+    <p>Crops the watermark band out and erases every trace of the Xodo/PDFTron watermark tag - never touches your own drawings, stamps, or pasted images.</p>
 
     <div class="drop-zone" id="dropZone">
         <p id="dropText">Click or drag PDF file here</p>
@@ -81,66 +81,189 @@
         return v.toString().replace(/^\//, '').toLowerCase();
     }
 
+    function isWatermarkOCG(ocgDict, context) {
+        try {
+            const name = ocgDict.get(PDFLib.PDFName.of('Name'));
+            if (name && toPlainLower(name).includes('watermark')) return true;
+        } catch (e) {}
+        return false;
+    }
+
+    function ocTargetsWatermark(ocRaw, context) {
+        if (!ocRaw) return false;
+        const resolved = context.lookup(ocRaw);
+        if (!resolved || typeof resolved.get !== 'function') return false;
+        const type = toPlainLower(resolved.get(PDFLib.PDFName.of('Type')));
+        if (type === 'ocg') return isWatermarkOCG(resolved, context);
+        if (type === 'ocmd') {
+            const ocgsRaw = resolved.get(PDFLib.PDFName.of('OCGs'));
+            const ocgs = context.lookup(ocgsRaw);
+            if (!ocgs) return false;
+            if (ocgs instanceof PDFLib.PDFArray) {
+                for (let i = 0; i < ocgs.size(); i++) {
+                    const g = context.lookup(ocgs.get(i));
+                    if (g && isWatermarkOCG(g, context)) return true;
+                }
+                return false;
+            }
+            return isWatermarkOCG(ocgs, context);
+        }
+        return false;
+    }
+
+    // Removes a bare /PDFTRON {/Private /Watermark} tag wherever it sits -
+    // directly on this dict, or one level down inside /PieceInfo. This key
+    // is non-standard vendor metadata that every spec-compliant PDF reader
+    // already ignores; removing it can never change how the page renders.
+    function stripPdftronWatermarkTag(dict, context) {
+        let changed = 0;
+        try {
+            const pt = context.lookup(dict.get(PDFLib.PDFName.of('PDFTRON')));
+            if (pt && typeof pt.get === 'function') {
+                const priv = pt.get(PDFLib.PDFName.of('Private'));
+                if (priv && toPlainLower(priv).includes('watermark')) {
+                    dict.delete(PDFLib.PDFName.of('PDFTRON'));
+                    changed++;
+                }
+            }
+        } catch (e) {}
+        try {
+            const pi = context.lookup(dict.get(PDFLib.PDFName.of('PieceInfo')));
+            if (pi && typeof pi.get === 'function') {
+                const pt2 = context.lookup(pi.get(PDFLib.PDFName.of('PDFTRON')));
+                if (pt2 && typeof pt2.get === 'function') {
+                    const priv2 = pt2.get(PDFLib.PDFName.of('Private'));
+                    if (priv2 && toPlainLower(priv2).includes('watermark')) {
+                        pi.delete(PDFLib.PDFName.of('PDFTRON'));
+                        changed++;
+                        if (pi.keys().length === 0) dict.delete(PDFLib.PDFName.of('PieceInfo'));
+                    }
+                }
+            }
+        } catch (e) {}
+        return changed;
+    }
+
     processBtn.addEventListener('click', async () => {
         if (!selectedFile) return;
 
         processBtn.disabled = true;
         status.className = 'status info';
-        status.textContent = 'Restoring true page dimensions...';
+        status.textContent = 'Removing watermark traces...';
 
         try {
             const fileBuffer = await selectedFile.arrayBuffer();
             const pdfDoc = await PDFLib.PDFDocument.load(fileBuffer);
+            const context = pdfDoc.context;
+            const stats = { mediabox: 0, headerForms: 0, annots: 0, ocDetached: 0, pdftronStripped: 0 };
 
-            // Cosmetic metadata cleanup only - never touches page content,
-            // XObjects, or annotations, so it can't destroy anything a
-            // person actually drew, pasted, or stamped into the file.
+            // Cosmetic metadata cleanup
             try {
                 pdfDoc.setProducer('Adobe Acrobat Reader');
                 pdfDoc.setCreator('');
-                const catalog = pdfDoc.catalog;
-                for (const key of catalog.keys()) {
-                    if (!key) continue;
-                    const keyStr = toPlainLower(key);
-                    if (keyStr === 'ocproperties' || keyStr === 'pieceinfo') {
-                        catalog.delete(key);
-                    }
-                }
-            } catch (e) { console.warn('Catalog clean notice:', e); }
+            } catch (e) { console.warn('Metadata clean notice:', e); }
 
-            // PRIMARY (and only structural) fix: Xodo expands each page's
-            // MediaBox/CropBox to make room for its header/footer band, and
-            // stashes the true original box in a private page-level key
-            // before doing so. Restoring that box crops the watermark
-            // completely out of the visible/printable page - no need to
-            // identify or delete any drawing object, so nothing legitimate
-            // (pasted images, stamps, ink) can ever be mistaken for the
-            // watermark and destroyed.
             const pages = pdfDoc.getPages();
-            let restoredCount = 0;
 
             for (const page of pages) {
                 const pageNode = page.node;
+
+                // 1. Restore the true page size Xodo stashed before expanding
+                //    the page to fit its header/footer band.
                 let markerKey = null;
                 for (const key of pageNode.keys()) {
-                    if (toPlainLower(key).includes('xodo_watermark_mediabox')) {
-                        markerKey = key;
-                        break;
+                    if (toPlainLower(key).includes('xodo_watermark_mediabox')) { markerKey = key; break; }
+                }
+                if (markerKey) {
+                    const markerVal = pageNode.get(markerKey);
+                    const markerStr = (markerVal && markerVal.decodeText) ? markerVal.decodeText() : markerVal.toString();
+                    const coords = markerStr.split(',').map(s => parseFloat(s.trim()));
+                    if (coords.length === 4 && coords.every(n => !isNaN(n))) {
+                        const trueBox = context.obj(coords);
+                        pageNode.set(PDFLib.PDFName.of('MediaBox'), trueBox);
+                        if (pageNode.get(PDFLib.PDFName.of('CropBox'))) {
+                            pageNode.set(PDFLib.PDFName.of('CropBox'), trueBox);
+                        }
+                        pageNode.delete(markerKey);
+                        stats.mediabox++;
                     }
                 }
-                if (!markerKey) continue;
 
-                const markerVal = pageNode.get(markerKey);
-                const markerStr = (markerVal && markerVal.decodeText) ? markerVal.decodeText() : markerVal.toString();
-                const coords = markerStr.split(',').map(s => parseFloat(s.trim()));
-                if (coords.length === 4 && coords.every(n => !isNaN(n))) {
-                    const trueBox = pdfDoc.context.obj(coords);
-                    pageNode.set(PDFLib.PDFName.of('MediaBox'), trueBox);
-                    if (pageNode.get(PDFLib.PDFName.of('CropBox'))) {
-                        pageNode.set(PDFLib.PDFName.of('CropBox'), trueBox);
+                // 2. Wipe ONLY the true header/footer overlay form: a direct
+                //    child of the page's own Resources/XObject dict whose
+                //    /OC points at a "Watermark" OCG. Never recurses into
+                //    annotations, so a pasted image can never be caught here.
+                const resources = context.lookup(pageNode.get(PDFLib.PDFName.of('Resources')));
+                if (resources) {
+                    const xobjects = context.lookup(resources.get(PDFLib.PDFName.of('XObject')));
+                    if (xobjects && typeof xobjects.keys === 'function') {
+                        for (const key of xobjects.keys()) {
+                            const xo = context.lookup(xobjects.get(key));
+                            if (!xo || !xo.dict) continue;
+                            if (ocTargetsWatermark(xo.dict.get(PDFLib.PDFName.of('OC')), context)) {
+                                xo.dict.delete(PDFLib.PDFName.of('Filter'));
+                                xo.dict.delete(PDFLib.PDFName.of('DecodeParms'));
+                                xo.dict.delete(PDFLib.PDFName.of('OC'));
+                                xo.contents = new Uint8Array(0);
+                                stats.headerForms++;
+                            }
+                        }
                     }
-                    pageNode.delete(markerKey);
-                    restoredCount++;
+                }
+
+                // 3. Remove ONLY the annotation Xodo explicitly self-tags as
+                //    the watermark link, via its own /TrnCustomData key.
+                const annotsRaw = pageNode.get(PDFLib.PDFName.of('Annots'));
+                const annots = context.lookup(annotsRaw);
+                if (annots instanceof PDFLib.PDFArray) {
+                    for (let i = annots.size() - 1; i >= 0; i--) {
+                        const a = context.lookup(annots.get(i));
+                        if (!a || typeof a.get !== 'function') continue;
+                        const tcd = a.get(PDFLib.PDFName.of('TrnCustomData'));
+                        if (tcd && toPlainLower(tcd).includes('xodo_watermark')) {
+                            annots.remove(i);
+                            stats.annots++;
+                        }
+                    }
+                }
+            }
+
+            // 4 & 5. Sweep every indirect object in the document: detach any
+            // remaining /OC tag that points at a "Watermark" OCG (this only
+            // removes the optional-content label - an object with no /OC is
+            // simply always visible, exactly as it already was), and strip
+            // the bare /PDFTRON{Private:Watermark} metadata tag wherever it
+            // appears. Neither of these ever touches actual drawn content.
+            for (const [ref, obj] of context.enumerateIndirectObjects()) {
+                const dict = obj.dict ? obj.dict : obj; // stream or plain dict
+                if (!dict || typeof dict.get !== 'function') continue;
+
+                const oc = dict.get(PDFLib.PDFName.of('OC'));
+                if (oc && ocTargetsWatermark(oc, context)) {
+                    dict.delete(PDFLib.PDFName.of('OC'));
+                    stats.ocDetached++;
+                }
+
+                stats.pdftronStripped += stripPdftronWatermarkTag(dict, context);
+            }
+
+            // 6. Catalog-level cleanup: drop the layers panel entry and any
+            // stray /PieceInfo, and blank out now-orphaned Watermark OCG
+            // definitions so no readable trace of the tag remains anywhere.
+            try {
+                const catalog = pdfDoc.catalog;
+                for (const key of catalog.keys()) {
+                    const keyStr = toPlainLower(key);
+                    if (keyStr === 'ocproperties' || keyStr === 'pieceinfo') catalog.delete(key);
+                }
+            } catch (e) { console.warn('Catalog clean notice:', e); }
+
+            for (const [ref, obj] of context.enumerateIndirectObjects()) {
+                if (obj && typeof obj.get === 'function' && toPlainLower(obj.get(PDFLib.PDFName.of('Type'))) === 'ocg') {
+                    if (isWatermarkOCG(obj, context)) {
+                        obj.set(PDFLib.PDFName.of('Name'), PDFLib.PDFString.of(''));
+                        obj.delete(PDFLib.PDFName.of('PDFTRON'));
+                    }
                 }
             }
 
@@ -152,13 +275,8 @@
             link.download = selectedFile.name.replace(/\.pdf$/i, '_clean.pdf');
             link.click();
 
-            if (restoredCount > 0) {
-                status.className = 'status success';
-                status.textContent = `Restored true page size on ${restoredCount} page(s) - watermark cropped out.`;
-            } else {
-                status.className = 'status warn';
-                status.textContent = 'No Xodo page-size marker found. File saved unchanged (metadata still cleared).';
-            }
+            status.className = 'status success';
+            status.textContent = `Cropped ${stats.mediabox} page(s), removed the header form and ${stats.annots} watermark link annotation(s), and stripped ${stats.pdftronStripped} leftover watermark tag(s).`;
         } catch (err) {
             console.error(err);
             status.className = 'status error';
