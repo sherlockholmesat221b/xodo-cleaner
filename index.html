@@ -247,14 +247,23 @@
                 stats.pdftronStripped += stripPdftronWatermarkTag(dict, context);
             }
 
-            // 6. Catalog-level cleanup: drop the layers panel entry and any
-            // stray /PieceInfo, and blank out now-orphaned Watermark OCG
-            // definitions so no readable trace of the tag remains anywhere.
+            // 6. Catalog-level cleanup: drop the layers panel entry, any
+            // stray /PieceInfo, and - this is the one Xodo's own app
+            // actually appears to check - the explicit /xodo_watermark
+            // (String "true") and /xodo_watermark_page_count flags it
+            // stamps directly onto the document catalog. Everything else
+            // in this tool (OCG tags, PDFTRON metadata, the header form,
+            // the link annotation) is content-level cleanup; THIS pair is
+            // the simple boolean the app itself reads to decide whether to
+            // show "This file contains Xodo watermark".
             try {
                 const catalog = pdfDoc.catalog;
                 for (const key of catalog.keys()) {
                     const keyStr = toPlainLower(key);
-                    if (keyStr === 'ocproperties' || keyStr === 'pieceinfo') catalog.delete(key);
+                    if (keyStr === 'ocproperties' || keyStr === 'pieceinfo' ||
+                        keyStr === 'xodo_watermark' || keyStr === 'xodo_watermark_page_count') {
+                        catalog.delete(key);
+                    }
                 }
             } catch (e) { console.warn('Catalog clean notice:', e); }
 
