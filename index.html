@@ -1,300 +1,448 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Surgical Xodo Watermark Remover</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #f5f5f7; color: #1d1d1f; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .card { background: #ffffff; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); width: 100%; max-width: 480px; padding: 32px; text-align: center; }
-        h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; }
-        p { font-size: 14px; color: #86868b; margin-bottom: 24px; }
-        .drop-zone { border: 2px dashed #d2d2d7; border-radius: 12px; padding: 36px 20px; cursor: pointer; background: #fafafa; margin-bottom: 20px; }
-        .drop-zone:hover, .drop-zone.dragover { border-color: #0071e3; background: #f0f7ff; }
-        .file-info { font-size: 13px; color: #0071e3; margin-top: 8px; word-break: break-all; }
-        button { width: 100%; background-color: #0071e3; color: white; border: none; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: 500; cursor: pointer; }
-        button:disabled { background-color: #d2d2d7; cursor: not-allowed; }
-        .status { margin-top: 16px; font-size: 13px; font-weight: 500; }
-        .status.success { color: #34c759; }
-        .status.error { color: #ff3b30; }
-        .status.info { color: #0071e3; }
-        .status.warn { color: #ff9500; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xodo Watermark Remover</title>
+<meta name="description" content="Strips the Xodo/PDFTron free-tier watermark from a PDF entirely in your browser. Nothing is uploaded.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --bg:#10141c;
+    --surface:#161c27;
+    --surface-2:#1d2432;
+    --border:#283040;
+    --text:#e7ebf2;
+    --muted:#8993a6;
+    --accent:#e8a33d;
+    --accent-dim:#5c4620;
+    --good:#4fc98a;
+    --bad:#e2685f;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(232,163,61,.07), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding:48px 20px 80px;
+    line-height:1.5;
+  }
+  .wrap{width:100%;max-width:560px;}
+
+  header{margin-bottom:28px;}
+  .eyebrow{
+    display:flex;align-items:center;gap:8px;
+    font-family:var(--mono);
+    font-size:12.5px;color:var(--accent);
+    margin-bottom:10px;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);}
+  h1{font-size:26px;font-weight:650;margin:0 0 8px;letter-spacing:-.01em;}
+  .lede{color:var(--muted);font-size:14.5px;max-width:46ch;}
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:26px;
+    margin-top:22px;
+  }
+
+  .drop{
+    border:1.5px dashed var(--border);
+    border-radius:10px;
+    padding:30px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .drop:hover,.drop.drag{border-color:var(--accent);background:rgba(232,163,61,.05);}
+  .drop p{margin:0;color:var(--muted);font-size:14px;}
+  .drop .fname{font-family:var(--mono);color:var(--text);font-size:13.5px;margin-top:8px;word-break:break-all;}
+  .drop .fsize{font-family:var(--mono);color:var(--muted);font-size:12px;margin-top:3px;}
+
+  .sizewarn{
+    display:none;
+    margin-top:12px;
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid #4a3a1a;
+    background:rgba(232,163,61,.08);
+    color:#e8c07d;
+    font-size:12.5px;
+  }
+  .sizewarn code{font-family:var(--mono);background:rgba(0,0,0,.25);padding:1px 5px;border-radius:4px;}
+
+  button{
+    width:100%;
+    margin-top:16px;
+    background:var(--accent);
+    color:#1a1200;
+    border:none;
+    padding:13px;
+    border-radius:9px;
+    font-size:15px;
+    font-weight:650;
+    cursor:pointer;
+    transition:filter .12s, transform .05s;
+  }
+  button:hover:not(:disabled){filter:brightness(1.08);}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{background:#2a3040;color:#5a6274;cursor:not-allowed;}
+
+  .status{margin-top:14px;font-size:13.5px;min-height:1.2em;}
+  .status.info{color:var(--muted);}
+  .status.success{color:var(--good);}
+  .status.error{color:var(--bad);}
+
+  .log{
+    margin-top:14px;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:12px 14px;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--muted);
+    display:none;
+  }
+  .log div{display:flex;justify-content:space-between;padding:2px 0;}
+  .log span.v{color:var(--text);}
+
+  details{margin-top:22px;color:var(--muted);font-size:13.5px;}
+  summary{cursor:pointer;color:var(--text);font-weight:550;user-select:none;}
+  summary::marker{color:var(--accent);}
+  details .inner{margin-top:10px;}
+  details p{margin:0 0 10px;}
+  pre{
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:12px 14px;
+    overflow-x:auto;
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--text);
+    margin:0 0 10px;
+  }
+  ol{padding-left:20px;margin:0 0 10px;}
+  li{margin-bottom:4px;}
+
+  footer{margin-top:26px;color:#5a6274;font-size:12px;text-align:center;}
+</style>
 </head>
 <body>
+<div class="wrap">
 
-<div class="card">
-    <h1>Surgical Xodo Cleaner</h1>
-    <p>Crops the watermark band out and erases every trace of the Xodo/PDFTron watermark tag - never touches your own drawings, stamps, or pasted images.</p>
+  <header>
+    <div class="eyebrow"><span class="dot"></span>runs locally &mdash; nothing leaves your browser</div>
+    <h1>Xodo Watermark Remover</h1>
+    <p class="lede">Removes the free-tier "Made with Xodo" watermark and every trace of its detection flags, without touching your own ink, stamps, or links.</p>
+  </header>
 
-    <div class="drop-zone" id="dropZone">
-        <p id="dropText">Click or drag PDF file here</p>
-        <div class="file-info" id="fileInfo"></div>
-        <input type="file" id="fileInput" style="display:none" accept="application/pdf">
+  <div class="card">
+    <div class="drop" id="dropZone">
+      <p id="dropText">Drop a PDF here, or click to choose one</p>
+      <div class="fname" id="fileName"></div>
+      <div class="fsize" id="fileSize"></div>
+      <input type="file" id="fileInput" accept="application/pdf" style="display:none">
     </div>
 
-    <button id="processBtn" disabled>Clean and Download</button>
-    <div id="status" class="status"></div>
+    <div class="sizewarn" id="sizeWarn">
+      This file is large &mdash; your browser tab may be slow or run out of memory.
+      For big files, the <code>clean_xodo_watermark.py</code> command-line script (link below) uses a native PDF library and handles this comfortably.
+    </div>
+
+    <button id="processBtn" disabled>Clean and download</button>
+    <div class="status" id="status"></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <details>
+    <summary>Working with a very large PDF?</summary>
+    <div class="inner">
+      <p>The browser tool above holds the whole file in memory, which is fine up to roughly 50&ndash;80&nbsp;MB on most devices. For bigger files &mdash; or batches of them &mdash; use the companion Python script instead:</p>
+      <pre>pip install pikepdf
+python3 clean_xodo_watermark.py input.pdf
+python3 clean_xodo_watermark.py *.pdf   # batch</pre>
+      <p>It uses pikepdf (a C++ PDF library), applies the same checks as this page, and rebuilds the file afterward so leftover empty objects don't bloat the output &mdash; the result is usually a little <em>smaller</em> than the watermarked input.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>What exactly gets removed</summary>
+    <div class="inner">
+      <p>Each step only acts on something Xodo itself marks as watermark-related &mdash; nothing is matched by guesswork, so your own annotations, stamps, and links are never at risk:</p>
+      <ol>
+        <li>Restores each page's true size from a marker Xodo stores before expanding the page for the watermark band, cropping it out of view.</li>
+        <li>Empties the one overlay object tagged with an Optional Content Group literally named "Watermark".</li>
+        <li>Removes the one link annotation Xodo self-tags via <code>/TrnCustomData</code>.</li>
+        <li>Strips the <code>/PDFTRON</code> metadata tag and the <code>/xodo_watermark</code> catalog flag the app reads to show its own "contains watermark" warning.</li>
+      </ol>
+    </div>
+  </details>
+
+  <footer>Nothing you upload here is sent anywhere &mdash; the PDF is parsed and rewritten entirely in your browser tab.</footer>
 </div>
 
 <script>
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const dropText = document.getElementById('dropText');
-    const fileInfo = document.getElementById('fileInfo');
-    const processBtn = document.getElementById('processBtn');
-    const status = document.getElementById('status');
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const dropText = document.getElementById('dropText');
+  const fileName = document.getElementById('fileName');
+  const fileSize = document.getElementById('fileSize');
+  const sizeWarn = document.getElementById('sizeWarn');
+  const processBtn = document.getElementById('processBtn');
+  const status = document.getElementById('status');
+  const log = document.getElementById('log');
 
-    let selectedFile = null;
+  const LARGE_FILE_BYTES = 60 * 1024 * 1024; // 60 MB
+  let selectedFile = null;
 
-    dropZone.addEventListener('click', () => fileInput.click());
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0 && e.dataTransfer.files[0].type === 'application/pdf') {
-            handleFile(e.dataTransfer.files[0]);
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag');
+    if (e.dataTransfer.files.length > 0 && e.dataTransfer.files[0].type === 'application/pdf') {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) handleFile(e.target.files[0]);
+  });
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+    return (n/(1024*1024)).toFixed(1) + ' MB';
+  }
+
+  function handleFile(file) {
+    selectedFile = file;
+    dropText.textContent = 'Selected file';
+    fileName.textContent = file.name;
+    fileSize.textContent = formatBytes(file.size);
+    processBtn.disabled = false;
+    status.textContent = '';
+    status.className = 'status';
+    log.style.display = 'none';
+    sizeWarn.style.display = file.size > LARGE_FILE_BYTES ? 'block' : 'none';
+  }
+
+  function toPlainLower(v) {
+    if (!v) return '';
+    try { if (typeof v.decodeText === 'function') return v.decodeText().toLowerCase(); } catch (e) {}
+    return v.toString().replace(/^\//, '').toLowerCase();
+  }
+
+  function isWatermarkOCG(ocgDict) {
+    try {
+      const name = ocgDict.get(PDFLib.PDFName.of('Name'));
+      if (name && toPlainLower(name).includes('watermark')) return true;
+    } catch (e) {}
+    return false;
+  }
+
+  function ocTargetsWatermark(ocRaw, context) {
+    if (!ocRaw) return false;
+    const resolved = context.lookup(ocRaw);
+    if (!resolved || typeof resolved.get !== 'function') return false;
+    const type = toPlainLower(resolved.get(PDFLib.PDFName.of('Type')));
+    if (type === 'ocg') return isWatermarkOCG(resolved);
+    if (type === 'ocmd') {
+      const ocgsRaw = resolved.get(PDFLib.PDFName.of('OCGs'));
+      const ocgs = context.lookup(ocgsRaw);
+      if (!ocgs) return false;
+      if (ocgs instanceof PDFLib.PDFArray) {
+        for (let i = 0; i < ocgs.size(); i++) {
+          const g = context.lookup(ocgs.get(i));
+          if (g && isWatermarkOCG(g)) return true;
         }
-    });
-
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) handleFile(e.target.files[0]);
-    });
-
-    function handleFile(file) {
-        selectedFile = file;
-        dropText.textContent = 'Selected File:';
-        fileInfo.textContent = file.name;
-        processBtn.disabled = false;
-        status.textContent = '';
-        status.className = 'status';
-    }
-
-    function toPlainLower(v) {
-        if (!v) return '';
-        try {
-            if (typeof v.decodeText === 'function') return v.decodeText().toLowerCase();
-        } catch (e) { /* not a text string type */ }
-        return v.toString().replace(/^\//, '').toLowerCase();
-    }
-
-    function isWatermarkOCG(ocgDict, context) {
-        try {
-            const name = ocgDict.get(PDFLib.PDFName.of('Name'));
-            if (name && toPlainLower(name).includes('watermark')) return true;
-        } catch (e) {}
         return false;
+      }
+      return isWatermarkOCG(ocgs);
     }
+    return false;
+  }
 
-    function ocTargetsWatermark(ocRaw, context) {
-        if (!ocRaw) return false;
-        const resolved = context.lookup(ocRaw);
-        if (!resolved || typeof resolved.get !== 'function') return false;
-        const type = toPlainLower(resolved.get(PDFLib.PDFName.of('Type')));
-        if (type === 'ocg') return isWatermarkOCG(resolved, context);
-        if (type === 'ocmd') {
-            const ocgsRaw = resolved.get(PDFLib.PDFName.of('OCGs'));
-            const ocgs = context.lookup(ocgsRaw);
-            if (!ocgs) return false;
-            if (ocgs instanceof PDFLib.PDFArray) {
-                for (let i = 0; i < ocgs.size(); i++) {
-                    const g = context.lookup(ocgs.get(i));
-                    if (g && isWatermarkOCG(g, context)) return true;
-                }
-                return false;
-            }
-            return isWatermarkOCG(ocgs, context);
+  function stripPdftronWatermarkTag(dict, context) {
+    let changed = 0;
+    try {
+      const pt = context.lookup(dict.get(PDFLib.PDFName.of('PDFTRON')));
+      if (pt && typeof pt.get === 'function') {
+        const priv = pt.get(PDFLib.PDFName.of('Private'));
+        if (priv && toPlainLower(priv).includes('watermark')) {
+          dict.delete(PDFLib.PDFName.of('PDFTRON'));
+          changed++;
         }
-        return false;
-    }
-
-    // Removes a bare /PDFTRON {/Private /Watermark} tag wherever it sits -
-    // directly on this dict, or one level down inside /PieceInfo. This key
-    // is non-standard vendor metadata that every spec-compliant PDF reader
-    // already ignores; removing it can never change how the page renders.
-    function stripPdftronWatermarkTag(dict, context) {
-        let changed = 0;
-        try {
-            const pt = context.lookup(dict.get(PDFLib.PDFName.of('PDFTRON')));
-            if (pt && typeof pt.get === 'function') {
-                const priv = pt.get(PDFLib.PDFName.of('Private'));
-                if (priv && toPlainLower(priv).includes('watermark')) {
-                    dict.delete(PDFLib.PDFName.of('PDFTRON'));
-                    changed++;
-                }
-            }
-        } catch (e) {}
-        try {
-            const pi = context.lookup(dict.get(PDFLib.PDFName.of('PieceInfo')));
-            if (pi && typeof pi.get === 'function') {
-                const pt2 = context.lookup(pi.get(PDFLib.PDFName.of('PDFTRON')));
-                if (pt2 && typeof pt2.get === 'function') {
-                    const priv2 = pt2.get(PDFLib.PDFName.of('Private'));
-                    if (priv2 && toPlainLower(priv2).includes('watermark')) {
-                        pi.delete(PDFLib.PDFName.of('PDFTRON'));
-                        changed++;
-                        if (pi.keys().length === 0) dict.delete(PDFLib.PDFName.of('PieceInfo'));
-                    }
-                }
-            }
-        } catch (e) {}
-        return changed;
-    }
-
-    processBtn.addEventListener('click', async () => {
-        if (!selectedFile) return;
-
-        processBtn.disabled = true;
-        status.className = 'status info';
-        status.textContent = 'Removing watermark traces...';
-
-        try {
-            const fileBuffer = await selectedFile.arrayBuffer();
-            const pdfDoc = await PDFLib.PDFDocument.load(fileBuffer);
-            const context = pdfDoc.context;
-            const stats = { mediabox: 0, headerForms: 0, annots: 0, ocDetached: 0, pdftronStripped: 0 };
-
-            // Cosmetic metadata cleanup
-            try {
-                pdfDoc.setProducer('Adobe Acrobat Reader');
-                pdfDoc.setCreator('');
-            } catch (e) { console.warn('Metadata clean notice:', e); }
-
-            const pages = pdfDoc.getPages();
-
-            for (const page of pages) {
-                const pageNode = page.node;
-
-                // 1. Restore the true page size Xodo stashed before expanding
-                //    the page to fit its header/footer band.
-                let markerKey = null;
-                for (const key of pageNode.keys()) {
-                    if (toPlainLower(key).includes('xodo_watermark_mediabox')) { markerKey = key; break; }
-                }
-                if (markerKey) {
-                    const markerVal = pageNode.get(markerKey);
-                    const markerStr = (markerVal && markerVal.decodeText) ? markerVal.decodeText() : markerVal.toString();
-                    const coords = markerStr.split(',').map(s => parseFloat(s.trim()));
-                    if (coords.length === 4 && coords.every(n => !isNaN(n))) {
-                        const trueBox = context.obj(coords);
-                        pageNode.set(PDFLib.PDFName.of('MediaBox'), trueBox);
-                        if (pageNode.get(PDFLib.PDFName.of('CropBox'))) {
-                            pageNode.set(PDFLib.PDFName.of('CropBox'), trueBox);
-                        }
-                        pageNode.delete(markerKey);
-                        stats.mediabox++;
-                    }
-                }
-
-                // 2. Wipe ONLY the true header/footer overlay form: a direct
-                //    child of the page's own Resources/XObject dict whose
-                //    /OC points at a "Watermark" OCG. Never recurses into
-                //    annotations, so a pasted image can never be caught here.
-                const resources = context.lookup(pageNode.get(PDFLib.PDFName.of('Resources')));
-                if (resources) {
-                    const xobjects = context.lookup(resources.get(PDFLib.PDFName.of('XObject')));
-                    if (xobjects && typeof xobjects.keys === 'function') {
-                        for (const key of xobjects.keys()) {
-                            const xo = context.lookup(xobjects.get(key));
-                            if (!xo || !xo.dict) continue;
-                            if (ocTargetsWatermark(xo.dict.get(PDFLib.PDFName.of('OC')), context)) {
-                                xo.dict.delete(PDFLib.PDFName.of('Filter'));
-                                xo.dict.delete(PDFLib.PDFName.of('DecodeParms'));
-                                xo.dict.delete(PDFLib.PDFName.of('OC'));
-                                xo.contents = new Uint8Array(0);
-                                stats.headerForms++;
-                            }
-                        }
-                    }
-                }
-
-                // 3. Remove ONLY the annotation Xodo explicitly self-tags as
-                //    the watermark link, via its own /TrnCustomData key.
-                const annotsRaw = pageNode.get(PDFLib.PDFName.of('Annots'));
-                const annots = context.lookup(annotsRaw);
-                if (annots instanceof PDFLib.PDFArray) {
-                    for (let i = annots.size() - 1; i >= 0; i--) {
-                        const a = context.lookup(annots.get(i));
-                        if (!a || typeof a.get !== 'function') continue;
-                        const tcd = a.get(PDFLib.PDFName.of('TrnCustomData'));
-                        if (tcd && toPlainLower(tcd).includes('xodo_watermark')) {
-                            annots.remove(i);
-                            stats.annots++;
-                        }
-                    }
-                }
-            }
-
-            // 4 & 5. Sweep every indirect object in the document: detach any
-            // remaining /OC tag that points at a "Watermark" OCG (this only
-            // removes the optional-content label - an object with no /OC is
-            // simply always visible, exactly as it already was), and strip
-            // the bare /PDFTRON{Private:Watermark} metadata tag wherever it
-            // appears. Neither of these ever touches actual drawn content.
-            for (const [ref, obj] of context.enumerateIndirectObjects()) {
-                const dict = obj.dict ? obj.dict : obj; // stream or plain dict
-                if (!dict || typeof dict.get !== 'function') continue;
-
-                const oc = dict.get(PDFLib.PDFName.of('OC'));
-                if (oc && ocTargetsWatermark(oc, context)) {
-                    dict.delete(PDFLib.PDFName.of('OC'));
-                    stats.ocDetached++;
-                }
-
-                stats.pdftronStripped += stripPdftronWatermarkTag(dict, context);
-            }
-
-            // 6. Catalog-level cleanup: drop the layers panel entry, any
-            // stray /PieceInfo, and - this is the one Xodo's own app
-            // actually appears to check - the explicit /xodo_watermark
-            // (String "true") and /xodo_watermark_page_count flags it
-            // stamps directly onto the document catalog. Everything else
-            // in this tool (OCG tags, PDFTRON metadata, the header form,
-            // the link annotation) is content-level cleanup; THIS pair is
-            // the simple boolean the app itself reads to decide whether to
-            // show "This file contains Xodo watermark".
-            try {
-                const catalog = pdfDoc.catalog;
-                for (const key of catalog.keys()) {
-                    const keyStr = toPlainLower(key);
-                    if (keyStr === 'ocproperties' || keyStr === 'pieceinfo' ||
-                        keyStr === 'xodo_watermark' || keyStr === 'xodo_watermark_page_count') {
-                        catalog.delete(key);
-                    }
-                }
-            } catch (e) { console.warn('Catalog clean notice:', e); }
-
-            for (const [ref, obj] of context.enumerateIndirectObjects()) {
-                if (obj && typeof obj.get === 'function' && toPlainLower(obj.get(PDFLib.PDFName.of('Type'))) === 'ocg') {
-                    if (isWatermarkOCG(obj, context)) {
-                        obj.set(PDFLib.PDFName.of('Name'), PDFLib.PDFString.of(''));
-                        obj.delete(PDFLib.PDFName.of('PDFTRON'));
-                    }
-                }
-            }
-
-            const pdfBytes = await pdfDoc.save();
-
-            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = selectedFile.name.replace(/\.pdf$/i, '_clean.pdf');
-            link.click();
-
-            status.className = 'status success';
-            status.textContent = `Cropped ${stats.mediabox} page(s), removed the header form and ${stats.annots} watermark link annotation(s), and stripped ${stats.pdftronStripped} leftover watermark tag(s).`;
-        } catch (err) {
-            console.error(err);
-            status.className = 'status error';
-            status.textContent = 'Error: ' + err.message;
-        } finally {
-            processBtn.disabled = false;
+      }
+    } catch (e) {}
+    try {
+      const pi = context.lookup(dict.get(PDFLib.PDFName.of('PieceInfo')));
+      if (pi && typeof pi.get === 'function') {
+        const pt2 = context.lookup(pi.get(PDFLib.PDFName.of('PDFTRON')));
+        if (pt2 && typeof pt2.get === 'function') {
+          const priv2 = pt2.get(PDFLib.PDFName.of('Private'));
+          if (priv2 && toPlainLower(priv2).includes('watermark')) {
+            pi.delete(PDFLib.PDFName.of('PDFTRON'));
+            changed++;
+            if (pi.keys().length === 0) dict.delete(PDFLib.PDFName.of('PieceInfo'));
+          }
         }
-    });
+      }
+    } catch (e) {}
+    return changed;
+  }
+
+  function renderLog(stats) {
+    const rows = [
+      ['Pages cropped to true size', stats.mediabox],
+      ['Header/footer overlay removed', stats.headerForms],
+      ['Watermark link annotation removed', stats.annots],
+      ['Stray OC tags detached', stats.ocDetached],
+      ['PDFTRON metadata tags stripped', stats.pdftronStripped],
+    ];
+    log.innerHTML = rows.map(([k,v]) => `<div><span>${k}</span><span class="v">${v}</span></div>`).join('');
+    log.style.display = 'block';
+  }
+
+  async function clean(file) {
+    const fileBuffer = await file.arrayBuffer();
+    const pdfDoc = await PDFLib.PDFDocument.load(fileBuffer);
+    const context = pdfDoc.context;
+    const stats = { mediabox: 0, headerForms: 0, annots: 0, ocDetached: 0, pdftronStripped: 0 };
+
+    try {
+      pdfDoc.setProducer('Adobe Acrobat Reader');
+      pdfDoc.setCreator('');
+    } catch (e) {}
+
+    for (const page of pdfDoc.getPages()) {
+      const pageNode = page.node;
+
+      let markerKey = null;
+      for (const key of pageNode.keys()) {
+        if (toPlainLower(key).includes('xodo_watermark_mediabox')) { markerKey = key; break; }
+      }
+      if (markerKey) {
+        const markerVal = pageNode.get(markerKey);
+        const markerStr = (markerVal && markerVal.decodeText) ? markerVal.decodeText() : markerVal.toString();
+        const coords = markerStr.split(',').map(s => parseFloat(s.trim()));
+        if (coords.length === 4 && coords.every(n => !isNaN(n))) {
+          const trueBox = context.obj(coords);
+          pageNode.set(PDFLib.PDFName.of('MediaBox'), trueBox);
+          if (pageNode.get(PDFLib.PDFName.of('CropBox'))) pageNode.set(PDFLib.PDFName.of('CropBox'), trueBox);
+          pageNode.delete(markerKey);
+          stats.mediabox++;
+        }
+      }
+
+      const resources = context.lookup(pageNode.get(PDFLib.PDFName.of('Resources')));
+      if (resources) {
+        const xobjects = context.lookup(resources.get(PDFLib.PDFName.of('XObject')));
+        if (xobjects && typeof xobjects.keys === 'function') {
+          for (const key of xobjects.keys()) {
+            const xo = context.lookup(xobjects.get(key));
+            if (!xo || !xo.dict) continue;
+            if (ocTargetsWatermark(xo.dict.get(PDFLib.PDFName.of('OC')), context)) {
+              xo.dict.delete(PDFLib.PDFName.of('Filter'));
+              xo.dict.delete(PDFLib.PDFName.of('DecodeParms'));
+              xo.dict.delete(PDFLib.PDFName.of('OC'));
+              xo.contents = new Uint8Array(0);
+              stats.headerForms++;
+            }
+          }
+        }
+      }
+
+      const annotsRaw = pageNode.get(PDFLib.PDFName.of('Annots'));
+      const annots = context.lookup(annotsRaw);
+      if (annots instanceof PDFLib.PDFArray) {
+        for (let i = annots.size() - 1; i >= 0; i--) {
+          const a = context.lookup(annots.get(i));
+          if (!a || typeof a.get !== 'function') continue;
+          const tcd = a.get(PDFLib.PDFName.of('TrnCustomData'));
+          if (tcd && toPlainLower(tcd).includes('xodo_watermark')) {
+            annots.remove(i);
+            stats.annots++;
+          }
+        }
+      }
+    }
+
+    for (const [ref, obj] of context.enumerateIndirectObjects()) {
+      const dict = obj.dict ? obj.dict : obj;
+      if (!dict || typeof dict.get !== 'function') continue;
+      const oc = dict.get(PDFLib.PDFName.of('OC'));
+      if (oc && ocTargetsWatermark(oc, context)) {
+        dict.delete(PDFLib.PDFName.of('OC'));
+        stats.ocDetached++;
+      }
+      stats.pdftronStripped += stripPdftronWatermarkTag(dict, context);
+    }
+
+    try {
+      const catalog = pdfDoc.catalog;
+      for (const key of catalog.keys()) {
+        const keyStr = toPlainLower(key);
+        if (keyStr === 'ocproperties' || keyStr === 'pieceinfo' ||
+            keyStr === 'xodo_watermark' || keyStr === 'xodo_watermark_page_count') {
+          catalog.delete(key);
+        }
+      }
+    } catch (e) {}
+
+    for (const [ref, obj] of context.enumerateIndirectObjects()) {
+      if (obj && typeof obj.get === 'function' && toPlainLower(obj.get(PDFLib.PDFName.of('Type'))) === 'ocg') {
+        if (isWatermarkOCG(obj)) {
+          obj.set(PDFLib.PDFName.of('Name'), PDFLib.PDFString.of(''));
+          obj.delete(PDFLib.PDFName.of('PDFTRON'));
+        }
+      }
+    }
+
+    return { bytes: await pdfDoc.save(), stats };
+  }
+
+  processBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    processBtn.disabled = true;
+    status.className = 'status info';
+    status.textContent = 'Removing watermark traces\u2026';
+    log.style.display = 'none';
+
+    // Let the status text paint before the (synchronous) heavy work starts.
+    await new Promise(r => setTimeout(r, 30));
+
+    try {
+      const { bytes, stats } = await clean(selectedFile);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = selectedFile.name.replace(/\.pdf$/i, '_clean.pdf');
+      link.click();
+
+      status.className = 'status success';
+      status.textContent = 'Done \u2014 cleaned file downloaded.';
+      renderLog(stats);
+    } catch (err) {
+      console.error(err);
+      status.className = 'status error';
+      status.textContent = 'Error: ' + err.message;
+    } finally {
+      processBtn.disabled = false;
+    }
+  });
 </script>
-
 </body>
 </html>
