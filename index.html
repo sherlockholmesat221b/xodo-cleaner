@@ -204,7 +204,11 @@
     </details>
   </div>
 
-  <footer>Not affiliated with Xodo. A free tool for people who'd rather not pay to remove their own watermark.</footer>
+  <footer>
+    Not affiliated with Xodo. A free tool for people who'd rather not pay to remove their own watermark.
+    <br><br>
+    Made with <span style="color:var(--accent)">&hearts;</span> by <a href="https://github.com/sherlockholmesat221b" style="color:var(--muted);">sherlockholmesat221b</a>
+  </footer>
 </div>
 
 <script>
@@ -333,22 +337,10 @@
     for (const page of pdfDoc.getPages()) {
       const pageNode = page.node;
 
-      let markerKey = null;
-      for (const key of pageNode.keys()) {
-        if (toPlainLower(key).includes('xodo_watermark_mediabox')) { markerKey = key; break; }
-      }
-      if (markerKey) {
-        const markerVal = pageNode.get(markerKey);
-        const markerStr = (markerVal && markerVal.decodeText) ? markerVal.decodeText() : markerVal.toString();
-        const coords = markerStr.split(',').map(s => parseFloat(s.trim()));
-        if (coords.length === 4 && coords.every(n => !isNaN(n))) {
-          const trueBox = context.obj(coords);
-          pageNode.set(PDFLib.PDFName.of('MediaBox'), trueBox);
-          if (pageNode.get(PDFLib.PDFName.of('CropBox'))) pageNode.set(PDFLib.PDFName.of('CropBox'), trueBox);
-          pageNode.delete(markerKey);
-        }
-      }
-
+      // 1. Remove the watermark's own overlay form and its self-tagged
+      //    link annotation FIRST, before we look at what (if anything)
+      //    else occupies the padding band - otherwise the watermark's own
+      //    objects would always look like a reason not to crop.
       const resources = context.lookup(pageNode.get(PDFLib.PDFName.of('Resources')));
       if (resources) {
         const xobjects = context.lookup(resources.get(PDFLib.PDFName.of('XObject')));
@@ -375,6 +367,56 @@
           const tcd = a.get(PDFLib.PDFName.of('TrnCustomData'));
           if (tcd && toPlainLower(tcd).includes('xodo_watermark')) {
             annots.remove(i);
+          }
+        }
+      }
+
+      // 2. Only now decide whether to restore the true page size. The
+      // watermark is already gone either way (step 1, plus the sweep
+      // below) - this crop is purely cosmetic, so it's only worth doing
+      // when nothing else is left sitting in the padding band it would
+      // cut off. If any remaining annotation (your own ink, a stamp, a
+      // link) reaches into that band, we leave the page at its current
+      // size instead of clipping it.
+      let markerKey = null;
+      for (const key of pageNode.keys()) {
+        if (toPlainLower(key).includes('xodo_watermark_mediabox')) { markerKey = key; break; }
+      }
+      if (markerKey) {
+        const markerVal = pageNode.get(markerKey);
+        const markerStr = (markerVal && markerVal.decodeText) ? markerVal.decodeText() : markerVal.toString();
+        const coords = markerStr.split(',').map(s => parseFloat(s.trim()));
+        pageNode.delete(markerKey);
+
+        if (coords.length === 4 && coords.every(n => !isNaN(n))) {
+          const [tx0, ty0, tx1, ty1] = coords;
+          const EPS = 0.5; // tolerance for float rounding
+          let overlapsBand = false;
+
+          const remainingAnnots = context.lookup(pageNode.get(PDFLib.PDFName.of('Annots')));
+          if (remainingAnnots instanceof PDFLib.PDFArray) {
+            for (let i = 0; i < remainingAnnots.size(); i++) {
+              const a = context.lookup(remainingAnnots.get(i));
+              if (!a || typeof a.get !== 'function') continue;
+              const rect = context.lookup(a.get(PDFLib.PDFName.of('Rect')));
+              if (!(rect instanceof PDFLib.PDFArray) || rect.size() !== 4) continue;
+              const nums = [0,1,2,3].map(i => {
+                const v = context.lookup(rect.get(i));
+                return (v instanceof PDFLib.PDFNumber) ? v.asNumber() : NaN;
+              });
+              if (nums.some(n => isNaN(n))) continue;
+              const [rx0, ry0, rx1, ry1] = nums;
+              if (rx0 < tx0-EPS || rx1 > tx1+EPS || ry0 < ty0-EPS || ry1 > ty1+EPS) {
+                overlapsBand = true;
+                break;
+              }
+            }
+          }
+
+          if (!overlapsBand) {
+            const trueBox = context.obj(coords);
+            pageNode.set(PDFLib.PDFName.of('MediaBox'), trueBox);
+            if (pageNode.get(PDFLib.PDFName.of('CropBox'))) pageNode.set(PDFLib.PDFName.of('CropBox'), trueBox);
           }
         }
       }
@@ -444,4 +486,3 @@
 </script>
 </body>
 </html>
-
