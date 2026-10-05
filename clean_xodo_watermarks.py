@@ -2,7 +2,11 @@
 """
 clean_xodo_watermark.py — strip the Xodo/PDFTron free-tier watermark from a PDF.
 
-Made with love by sherlockholmesat221b (https://github.com/sherlockholmesat221b)
+Copyright © 2026 sherlockholmesat221b
+Licensed under the GNU General Public License v3.0 (GPLv3).
+
+Made with love by sherlockholmesat221b
+(https://github.com/sherlockholmesat221b)
 
 For files too large or too many to run through the in-browser tool
 comfortably. Uses pikepdf (libqpdf), which is written in C++ and streams

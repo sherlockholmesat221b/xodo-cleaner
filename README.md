@@ -43,3 +43,21 @@ No build step, no config file, nothing to install.
 Every step keys off something Xodo itself marks as watermark-related, never
 a blanket keyword match — see the comments in `clean_xodo_watermark.py` for
 the full breakdown of each pass.
+
+## License
+
+Copyright © 2026 sherlockholmesat221b
+
+This project is free and open-source software licensed under the
+GNU General Public License v3.0 (GPLv3), a strong copyleft license.
+
+You are free to use, study, modify, and redistribute the code, provided
+that redistribution complies with the terms of the GPLv3. In particular,
+modified versions distributed to others must remain available under the
+GPLv3 and provide the corresponding source code as required by the license.
+
+See the [LICENSE](https://github.com/sherlockholmesat221b/xodo-cleaner/blob/main/LICENSE)
+file for the full license text.
+
+For licensing questions, contact
+[sherlockholmesat221b@proton.me](mailto:sherlockholmesat221b@proton.me).
